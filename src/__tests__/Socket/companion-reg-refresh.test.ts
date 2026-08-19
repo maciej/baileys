@@ -109,22 +109,34 @@ const bootUnpairedSocket = async () => {
 	})
 
 	const waitForQR = () =>
-		new Promise<string>(resolve => {
+		new Promise<string>((resolve, reject) => {
 			const listener = ({ qr }: { qr?: string }) => {
 				if (qr) {
+					clearTimeout(timer)
 					sock.ev.off('connection.update', listener)
 					resolve(qr)
 				}
 			}
 
+			const timer = setTimeout(() => {
+				sock.ev.off('connection.update', listener)
+				reject(new Error('timed out waiting for pairing QR'))
+			}, 2_000)
+
 			sock.ev.on('connection.update', listener)
 		})
 	const waitForCredsUpdate = () =>
-		new Promise<Partial<AuthenticationCreds>>(resolve => {
+		new Promise<Partial<AuthenticationCreds>>((resolve, reject) => {
 			const listener = (update: Partial<AuthenticationCreds>) => {
+				clearTimeout(timer)
 				sock.ev.off('creds.update', listener)
 				resolve(update)
 			}
+
+			const timer = setTimeout(() => {
+				sock.ev.off('creds.update', listener)
+				reject(new Error('timed out waiting for credentials update'))
+			}, 2_000)
 
 			sock.ev.on('creds.update', listener)
 		})
