@@ -19,6 +19,13 @@ The command reports the original and edited text, then exits successfully only i
 the original message and emitted a readable `messages.update` event for the same message ID.
 
 This command is manual, requires a TTY, and refuses to run in CI. It stores the original message only in memory.
+The smoke lookup matches the original ID, conversation, direction, and group sender, accepting only PN/LID aliases
+recorded with that original. Downstream `getMessage` implementations must also check `id`, `remoteJid`, and `fromMe`,
+using trusted stored addressing or mappings to resolve PN/LID aliases, because the same callback supplies content
+for retry/resend requests. An ID-only lookup can return another conversation's message for resend.
+Preserve `messageContextInfo.messageSecret` when storing originals. If the original or its secret is unavailable
+(for example, it was never persisted or predates pairing), the encrypted edit is skipped without a decrypted update.
+
 Authentication state is isolated per checkout outside the repository. Its directory is restricted to the current
 operating-system user, contained files are restricted to that user, symlinks are rejected, and concurrent runs are
 blocked. After eight idle hours the next run deletes the local state and requests a new pairing. The old linked-device

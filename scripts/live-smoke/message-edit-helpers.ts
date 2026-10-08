@@ -1,5 +1,5 @@
 import type { proto, WAMessage, WAMessageKey, WAMessageUpdate } from '../../src'
-import { isJidBroadcast, isJidNewsletter } from '../../src'
+import { isJidBroadcast, isJidGroup, isJidNewsletter, jidNormalizedUser } from '../../src'
 import { normalizeMessageContent } from '../../src/Utils/messages'
 
 export interface MessageUpsert {
@@ -44,8 +44,18 @@ export const extractEditedText = (update: WAMessageUpdate, originalMessageId: st
 	return extractText(update.update.message?.editedMessage?.message)
 }
 
+const matchesRecordedJid = (
+	requested: string | null | undefined,
+	recorded: string | null | undefined,
+	recordedAlt: string | null | undefined
+): boolean => {
+	const normalized = jidNormalizedUser(requested ?? undefined)
+	// Only aliases captured with the original establish identity; requested aliases are untrusted.
+	return !!normalized && [recorded, recordedAlt].some(jid => jidNormalizedUser(jid ?? undefined) === normalized)
+}
+
 export class OriginalMessageLookup {
-	private original: { id: string; message: proto.IMessage } | undefined
+	private original: { key: WAMessageKey; message: proto.IMessage } | undefined
 	private matchingLookups = 0
 
 	record(original: WAMessage): void {
@@ -53,16 +63,26 @@ export class OriginalMessageLookup {
 			throw new Error('Original message is missing its key or content')
 		}
 
-		this.original = { id: original.key.id, message: original.message }
+		this.original = { key: { ...original.key }, message: original.message }
 	}
 
 	async getMessage(key: WAMessageKey): Promise<proto.IMessage | undefined> {
-		if (!key.id || key.id !== this.original?.id) {
+		const original = this.original
+		if (
+			!original ||
+			!key.id ||
+			key.id !== original.key.id ||
+			typeof key.fromMe !== 'boolean' ||
+			key.fromMe !== original.key.fromMe ||
+			!matchesRecordedJid(key.remoteJid, original.key.remoteJid, original.key.remoteJidAlt) ||
+			(isJidGroup(original.key.remoteJid ?? undefined) &&
+				!matchesRecordedJid(key.participant, original.key.participant, original.key.participantAlt))
+		) {
 			return undefined
 		}
 
 		this.matchingLookups++
-		return this.original.message
+		return original.message
 	}
 
 	get matchingLookupCount(): number {
